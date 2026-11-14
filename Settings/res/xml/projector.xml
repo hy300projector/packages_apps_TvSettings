@@ -1,0 +1,47 @@
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <PreferenceCategory android:title="@string/projector_focus_title">
+
+        <SwitchPreference
+            android:key="projector_auto_focus"
+            android:title="@string/projector_auto_focus"
+            android:summary="@string/projector_auto_focus_summary"/>
+
+        <Preference
+            android:key="projector_focus_now"
+            android:title="@string/projector_focus_now"
+            android:summary="@string/projector_focus_now_summary"/>
+
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/projector_keystone_title">
+
+        <SwitchPreference
+            android:key="projector_auto_keystone"
+            android:title="@string/projector_auto_keystone"
+            android:summary="@string/projector_auto_keystone_summary"/>
+
+        <Preference
+            android:key="projector_keystone_top_left"
+            android:title="@string/projector_keystone_top_left"/>
+
+        <Preference
+            android:key="projector_keystone_top_right"
+            android:title="@string/projector_keystone_top_right"/>
+
+        <Preference
+            android:key="projector_keystone_bottom_left"
+            android:title="@string/projector_keystone_bottom_left"/>
+
+        <Preference
+            android:key="projector_keystone_bottom_right"
+            android:title="@string/projector_keystone_bottom_right"/>
+
+        <Preference
+            android:key="projector_keystone_reset"
+            android:title="@string/projector_keystone_reset"
+            android:summary="@string/projector_keystone_reset_summary"/>
+
+    </PreferenceCategory>
+
+</PreferenceScreen>
