@@ -12,6 +12,16 @@
             android:title="@string/projector_focus_now"
             android:summary="@string/projector_focus_now_summary"/>
 
+        <Preference
+            android:key="projector_focus_near"
+            android:title="@string/projector_focus_near"
+            android:summary="@string/projector_focus_near_summary"/>
+
+        <Preference
+            android:key="projector_focus_far"
+            android:title="@string/projector_focus_far"
+            android:summary="@string/projector_focus_far_summary"/>
+
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/projector_keystone_title">
@@ -20,6 +30,16 @@
             android:key="projector_auto_keystone"
             android:title="@string/projector_auto_keystone"
             android:summary="@string/projector_auto_keystone_summary"/>
+
+        <SwitchPreference
+            android:key="projector_auto_fit"
+            android:title="@string/projector_auto_fit"
+            android:summary="@string/projector_auto_fit_summary"/>
+
+        <SwitchPreference
+            android:key="projector_obstacle"
+            android:title="@string/projector_obstacle"
+            android:summary="@string/projector_obstacle_summary"/>
 
         <Preference
             android:key="projector_keystone_top_left"
@@ -41,6 +61,32 @@
             android:key="projector_keystone_reset"
             android:title="@string/projector_keystone_reset"
             android:summary="@string/projector_keystone_reset_summary"/>
+
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/projector_picture_title">
+
+        <Preference
+            android:key="projector_zoom"
+            android:title="@string/projector_zoom"
+            android:summary="@string/projector_zoom_summary"/>
+
+        <Preference
+            android:key="projector_zoom_out"
+            android:title="@string/projector_zoom_out"/>
+
+        <Preference
+            android:key="projector_zoom_in"
+            android:title="@string/projector_zoom_in"/>
+
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/projector_touch_title">
+
+        <SwitchPreference
+            android:key="projector_touch_keys"
+            android:title="@string/projector_touch_keys"
+            android:summary="@string/projector_touch_keys_summary"/>
 
     </PreferenceCategory>
 

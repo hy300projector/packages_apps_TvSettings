@@ -16,10 +16,8 @@
 
 package com.android.tv.settings.projector;
 
-import android.content.Intent;
 import android.os.Bundle;
 import android.os.SystemProperties;
-import android.util.Log;
 
 import androidx.preference.Preference;
 import androidx.preference.PreferenceScreen;
@@ -29,113 +27,140 @@ import com.android.tv.settings.R;
 import com.android.tv.settings.SettingsPreferenceFragment;
 
 /**
- * Projector settings: autofocus, auto keystone and manual four-corner keystone.
+ * Projector settings: the controls the stock projector stack exposed, without
+ * the stock apps.
  *
- * <p>The controls are the ones the stock projector UI (com.htc.magcubicos
- * ProjectActivity) exposed. That app is not shipped -- it carried the malware
- * hooks -- but its settings are plain system properties and broadcasts, so the
- * same controls can live in TvSettings without it:
+ * <p>Two decompiled vendor apps defined these settings:
+ * {@code com.hysd.vafocus} (the focus/keystone service, {@code tpjz_allwinner})
+ * and the MagcubicOS projector UI. Neither is installed -- they carried the
+ * malware hooks -- but every control they offered is a system property plus,
+ * for manual focus, one write to the motor node:
  *
  * <ul>
- *   <li>{@code persist.sys.vafocus}: autofocus on/off.
- *   <li>{@code intent.htc.vafocus}: "run autofocus now".
- *   <li>{@code persist.sys.tpryauto}: automatic keystone on/off;
- *       {@code android.intent.hotack_keystone} asks the keystone service to
- *       re-measure.
- *   <li>{@code persist.display.keystone_{lt,l b,rt,rb}{x,y}}: the manual
- *       four-corner offsets, in the same 0.001-of-screen units the stock app
- *       stored; {@code persist.sys.zoom.value} mirrors all eight in the order
- *       bottom-left, top-left, top-right, bottom-right.
+ *   <li>{@code persist.sys.vafocus}: autofocus.
+ *   <li>{@code persist.sys.tpryxcrt} (and the MagcubicOS spelling
+ *       {@code persist.sys.tpryauto}): automatic keystone.
+ *   <li>{@code persist.sys.mbrecognize}: automatic screen fit.
+ *   <li>{@code persist.sys.obstacle}: obstacle avoidance.
+ *   <li>{@code persist.sys.tchkeyenable}: on-screen touch keys.
+ *   <li>{@code persist.sys.zoom_value} / {@code persist.sys.zoom_scale}:
+ *       digital zoom.
+ *   <li>{@code persist.htc.keystone.{lt,rt,lb,rb}{x,y}}: the four-corner
+ *       correction, also mirrored to {@code persist.sys.projector.keystone_*}
+ *       for the in-tree keystone keeper.
+ *   <li>Focus commands go through {@code persist.sys.projector.focus_cmd} and
+ *       {@code persist.sys.projector.focus_seq}; the keeper writes the
+ *       {@code 0xCCAA} command word to the motor node.
  * </ul>
- *
- * <p>Whether a key or broadcast has an effect depends on the vendor side: the
- * keystone engine is the display-config/ksc path, and autofocus needs the
- * vendor focus service. Both are absent from a build that ships no vendor
- * projector app, in which case these settings are stored but inert; the page
- * still round-trips the values so a device with the vendor path behaves the
- * same as it did with the stock app.
  */
 public class ProjectorFragment extends SettingsPreferenceFragment
         implements Preference.OnPreferenceChangeListener, Preference.OnPreferenceClickListener {
 
-    private static final String TAG = "ProjectorFragment";
-
     private static final String PROP_AUTO_FOCUS = "persist.sys.vafocus";
-    private static final String PROP_AUTO_KEYSTONE = "persist.sys.tpryauto";
-    private static final String PROP_ZOOM_VALUE = "persist.sys.zoom.value";
-
-    private static final String ACTION_FOCUS_NOW = "intent.htc.vafocus";
-    private static final String ACTION_KEYSTONE_MEASURE = "android.intent.hotack_keystone";
+    private static final String PROP_AUTO_KEYSTONE = "persist.sys.tpryxcrt";
+    private static final String PROP_AUTO_KEYSTONE_LEGACY = "persist.sys.tpryauto";
+    private static final String PROP_AUTO_FIT = "persist.sys.mbrecognize";
+    private static final String PROP_OBSTACLE = "persist.sys.obstacle";
+    private static final String PROP_TOUCH_KEYS = "persist.sys.tchkeyenable";
+    private static final String PROP_KEYSTONE_VAF = "persist.sys.keystone_vaf";
+    private static final String PROP_ZOOM_VALUE = "persist.sys.zoom_value";
+    private static final String PROP_ZOOM_SCALE = "persist.sys.zoom_scale";
+    private static final String PROP_ZOOM_SCALE_OLD = "persist.sys.zoom_scale_old";
+    private static final String PROP_FOCUS_CMD = "persist.sys.projector.focus_cmd";
+    private static final String PROP_FOCUS_SEQ = "persist.sys.projector.focus_seq";
 
     private static final String KEY_AUTO_FOCUS = "projector_auto_focus";
     private static final String KEY_FOCUS_NOW = "projector_focus_now";
+    private static final String KEY_FOCUS_NEAR = "projector_focus_near";
+    private static final String KEY_FOCUS_FAR = "projector_focus_far";
     private static final String KEY_AUTO_KEYSTONE = "projector_auto_keystone";
+    private static final String KEY_AUTO_FIT = "projector_auto_fit";
+    private static final String KEY_OBSTACLE = "projector_obstacle";
+    private static final String KEY_TOUCH_KEYS = "projector_touch_keys";
+    private static final String KEY_ZOOM = "projector_zoom";
+    private static final String KEY_ZOOM_IN = "projector_zoom_in";
+    private static final String KEY_ZOOM_OUT = "projector_zoom_out";
     private static final String KEY_KEYSTONE_TOP_LEFT = "projector_keystone_top_left";
     private static final String KEY_KEYSTONE_TOP_RIGHT = "projector_keystone_top_right";
     private static final String KEY_KEYSTONE_BOTTOM_LEFT = "projector_keystone_bottom_left";
     private static final String KEY_KEYSTONE_BOTTOM_RIGHT = "projector_keystone_bottom_right";
     private static final String KEY_KEYSTONE_RESET = "projector_keystone_reset";
 
-    /** Corner property prefixes, index 0..3, matching ProjectorCornerDialog. */
-    static final String[] CORNER_PREFIXES = {
-            "persist.display.keystone_lt",
-            "persist.display.keystone_rt",
-            "persist.display.keystone_lb",
-            "persist.display.keystone_rb",
-    };
-
+    /** TvSettings' corner copies; the keeper reads these, then the stock keys. */
+    static final String PREFIX = "persist.sys.projector.keystone_";
     /**
-     * Prefix actually used for storage. Under stock AOSP policy the system app
-     * may set persist.sys.* (system_prop) but not persist.display.*, so the
-     * values live here and are mirrored to the stock keys on a best-effort
-     * basis (the stock keys are what a vendor keystone consumer reads).
+     * The stock key family, read-only here. Device policy cannot claim the
+     * persist.htc.* property namespace (it is not persist.vendor./persist.odm.)
+     * and core system policy does not define it, so a system app may not write
+     * it; the keeper still reads it in case a vendor consumer populated it.
      */
-    static final String SYS_PREFIX = "persist.sys.projector.keystone_";
+    static final String HTC_PREFIX = "persist.htc.keystone.";
 
     /** Manual adjustment step, in the same 0.001-of-screen units as the props. */
     static final int STEP = 5;
+    /** Manual focus step in motor micro-steps, matching the stock 0xCCAA argument. */
+    private static final int FOCUS_STEP = 5;
+    /** Digital zoom range, matching the stock UI's scale. */
+    private static final int ZOOM_MAX = 50;
+
+    private static final String[][] SWITCHES = {
+            {KEY_AUTO_FOCUS, PROP_AUTO_FOCUS},
+            {KEY_AUTO_KEYSTONE, PROP_AUTO_KEYSTONE},
+            {KEY_AUTO_FIT, PROP_AUTO_FIT},
+            {KEY_OBSTACLE, PROP_OBSTACLE},
+            {KEY_TOUCH_KEYS, PROP_TOUCH_KEYS},
+    };
 
     @Override
     public void onCreatePreferences(Bundle savedInstanceState, String rootKey) {
         setPreferencesFromResource(R.xml.projector, rootKey);
 
         final PreferenceScreen screen = getPreferenceScreen();
-        bindSwitch(screen, KEY_AUTO_FOCUS);
-        bindSwitch(screen, KEY_AUTO_KEYSTONE);
-
-        final Preference focusNow = screen.findPreference(KEY_FOCUS_NOW);
-        if (focusNow != null) {
-            focusNow.setOnPreferenceClickListener(this);
+        for (String[] entry : SWITCHES) {
+            final SwitchPreference preference = screen.findPreference(entry[0]);
+            if (preference != null) {
+                preference.setOnPreferenceChangeListener(this);
+            }
         }
-        final Preference reset = screen.findPreference(KEY_KEYSTONE_RESET);
-        if (reset != null) {
-            reset.setOnPreferenceClickListener(this);
+        for (String key : new String[] {KEY_FOCUS_NOW, KEY_FOCUS_NEAR, KEY_FOCUS_FAR,
+                KEY_ZOOM_IN, KEY_ZOOM_OUT, KEY_KEYSTONE_RESET}) {
+            final Preference preference = screen.findPreference(key);
+            if (preference != null) {
+                preference.setOnPreferenceClickListener(this);
+            }
         }
-        for (int i = 0; i < CORNER_PREFIXES.length; i++) {
+        for (int i = 0; i < 4; i++) {
             final Preference corner = screen.findPreference(cornerKey(i));
             if (corner != null) {
-                corner.setSummary(cornerSummary(i));
                 corner.setOnPreferenceClickListener(this);
             }
         }
+        refresh();
     }
 
     @Override
     public void onResume() {
         super.onResume();
+        refresh();
+    }
+
+    private void refresh() {
         final PreferenceScreen screen = getPreferenceScreen();
         if (screen == null) {
             return;
         }
-        final SwitchPreference autoFocus = screen.findPreference(KEY_AUTO_FOCUS);
-        if (autoFocus != null) {
-            autoFocus.setChecked(isTrue(PROP_AUTO_FOCUS));
+        for (String[] entry : SWITCHES) {
+            final SwitchPreference preference = screen.findPreference(entry[0]);
+            if (preference != null) {
+                preference.setChecked(SystemProperties.getBoolean(entry[1], false));
+            }
         }
-        final SwitchPreference autoKeystone = screen.findPreference(KEY_AUTO_KEYSTONE);
-        if (autoKeystone != null) {
-            autoKeystone.setChecked(isTrue(PROP_AUTO_KEYSTONE));
+        final Preference zoom = screen.findPreference(KEY_ZOOM);
+        if (zoom != null) {
+            zoom.setSummary(getString(R.string.projector_zoom_summary) + ": "
+                    + readZoom());
         }
-        for (int i = 0; i < CORNER_PREFIXES.length; i++) {
+        for (int i = 0; i < 4; i++) {
             final Preference corner = screen.findPreference(cornerKey(i));
             if (corner != null) {
                 corner.setSummary(cornerSummary(i));
@@ -147,17 +172,15 @@ public class ProjectorFragment extends SettingsPreferenceFragment
     public boolean onPreferenceChange(Preference preference, Object newValue) {
         final String key = preference.getKey();
         final boolean on = Boolean.TRUE.equals(newValue);
-        if (KEY_AUTO_FOCUS.equals(key)) {
-            SystemProperties.set(PROP_AUTO_FOCUS, on ? "1" : "0");
-            return true;
-        }
-        if (KEY_AUTO_KEYSTONE.equals(key)) {
-            SystemProperties.set(PROP_AUTO_KEYSTONE, on ? "1" : "0");
-            if (!on) {
-                // Turning auto off leaves the last measured shape in place.
-                return true;
+        for (String[] entry : SWITCHES) {
+            if (!entry[0].equals(key)) {
+                continue;
             }
-            sendKeystoneMeasure();
+            SystemProperties.set(entry[1], on ? "1" : "0");
+            if (KEY_AUTO_KEYSTONE.equals(key)) {
+                // The MagcubicOS UI wrote its own spelling of the same flag.
+                SystemProperties.set(PROP_AUTO_KEYSTONE_LEGACY, on ? "1" : "0");
+            }
             return true;
         }
         return false;
@@ -167,24 +190,40 @@ public class ProjectorFragment extends SettingsPreferenceFragment
     public boolean onPreferenceClick(Preference preference) {
         final String key = preference.getKey();
         if (KEY_FOCUS_NOW.equals(key)) {
-            final Intent intent = new Intent(ACTION_FOCUS_NOW);
-            intent.setPackage("com.hysd.vafocus");
-            getContext().sendBroadcast(intent);
-            // Also nudge the property the vendor service reads, in case the
-            // service watches it instead of the broadcast.
-            SystemProperties.set(PROP_AUTO_FOCUS, "1");
+            sendFocusCommand(8, 1);
+            return true;
+        }
+        if (KEY_FOCUS_NEAR.equals(key)) {
+            sendFocusCommand(1, FOCUS_STEP);
+            return true;
+        }
+        if (KEY_FOCUS_FAR.equals(key)) {
+            sendFocusCommand(2, FOCUS_STEP);
+            return true;
+        }
+        if (KEY_ZOOM_IN.equals(key) || KEY_ZOOM_OUT.equals(key)) {
+            final int next = Math.max(0, Math.min(ZOOM_MAX,
+                    readZoom() + (KEY_ZOOM_IN.equals(key) ? 1 : -1)));
+            SystemProperties.set(PROP_ZOOM_SCALE_OLD, Integer.toString(readZoom()));
+            SystemProperties.set(PROP_ZOOM_VALUE, Integer.toString(next));
+            SystemProperties.set(PROP_ZOOM_SCALE, Integer.toString(next));
+            refresh();
             return true;
         }
         if (KEY_KEYSTONE_RESET.equals(key)) {
-            for (int i = 0; i < CORNER_PREFIXES.length; i++) {
+            for (int i = 0; i < 4; i++) {
                 writeCorner(i, "x", 0);
                 writeCorner(i, "y", 0);
             }
-            SystemProperties.set(PROP_ZOOM_VALUE, "0,0,0,0,0,0,0,0");
-            refreshCorners();
+            SystemProperties.set(PROP_ZOOM_SCALE_OLD, Integer.toString(readZoom()));
+            SystemProperties.set(PROP_ZOOM_VALUE, "0");
+            SystemProperties.set(PROP_ZOOM_SCALE, "0");
+            // Tells the vendor focus service the shape came from a reset.
+            SystemProperties.set(PROP_KEYSTONE_VAF, "1");
+            refresh();
             return true;
         }
-        for (int i = 0; i < CORNER_PREFIXES.length; i++) {
+        for (int i = 0; i < 4; i++) {
             if (cornerKey(i).equals(key)) {
                 ProjectorCornerDialog.show(this, i);
                 return true;
@@ -193,39 +232,37 @@ public class ProjectorFragment extends SettingsPreferenceFragment
         return false;
     }
 
-    /** Applies one adjustment step to a corner and persists the whole shape. */
+    /**
+     * Queues a motor command for the keystone keeper. The command word is the
+     * stock 0xCCAA encoding: command in the high byte, argument in the low byte
+     * (1 up, 2 down, 7 goto step, 8 autofocus, 9 abort).
+     */
+    private void sendFocusCommand(int command, int argument) {
+        final int word = ((command & 0xff) << 8) | (argument & 0xff);
+        SystemProperties.set(PROP_FOCUS_CMD, String.format("0x%04X", word));
+        final int seq = SystemProperties.getInt(PROP_FOCUS_SEQ, 0) + 1;
+        SystemProperties.set(PROP_FOCUS_SEQ, Integer.toString(seq));
+    }
+
+    /** Applies one adjustment step to a corner; the keeper applies the rest. */
     static void adjustCorner(int corner, int dx, int dy) {
-        final int x = readCornerValue(corner, "x") + dx * STEP;
-        final int y = readCornerValue(corner, "y") + dy * STEP;
-        writeCorner(corner, "x", x);
-        writeCorner(corner, "y", y);
-        // persist.sys.zoom.value carries all eight: bl, tl, tr, br.
-        SystemProperties.set(PROP_ZOOM_VALUE,
-                readCorner(2) + "," + readCorner(0) + ","
-                        + readCorner(1) + "," + readCorner(3));
+        writeCorner(corner, "x", readCornerValue(corner, "x") + dx * STEP);
+        writeCorner(corner, "y", readCornerValue(corner, "y") + dy * STEP);
     }
 
-    private static String readCorner(int corner) {
-        return readCornerValue(corner, "x") + "," + readCornerValue(corner, "y");
-    }
-
-    /** Reads the system-app-writable copy, falling back to the stock key. */
-    private static int readCornerValue(int corner, String axis) {
-        final int own = SystemProperties.getInt(SYS_PREFIX + cornerSuffix(corner) + axis, 0);
+    static int readCornerValue(int corner, String axis) {
+        final int own = SystemProperties.getInt(PREFIX + cornerSuffix(corner) + axis, 0);
         if (own != 0) {
             return own;
         }
-        return SystemProperties.getInt(CORNER_PREFIXES[corner] + axis, 0);
+        return SystemProperties.getInt(HTC_PREFIX + cornerSuffix(corner) + axis, 0);
     }
 
-    /** Writes both keys: the writable one first, then the stock one best-effort. */
     private static void writeCorner(int corner, String axis, int value) {
-        final String text = Integer.toString(value);
-        SystemProperties.set(SYS_PREFIX + cornerSuffix(corner) + axis, text);
-        SystemProperties.set(CORNER_PREFIXES[corner] + axis, text);
+        SystemProperties.set(PREFIX + cornerSuffix(corner) + axis, Integer.toString(value));
     }
 
-    private static String cornerSuffix(int corner) {
+    static String cornerSuffix(int corner) {
         switch (corner) {
             case 0:
                 return "lt";
@@ -235,19 +272,6 @@ public class ProjectorFragment extends SettingsPreferenceFragment
                 return "lb";
             default:
                 return "rb";
-        }
-    }
-
-    private void refreshCorners() {
-        final PreferenceScreen screen = getPreferenceScreen();
-        if (screen == null) {
-            return;
-        }
-        for (int i = 0; i < CORNER_PREFIXES.length; i++) {
-            final Preference corner = screen.findPreference(cornerKey(i));
-            if (corner != null) {
-                corner.setSummary(cornerSummary(i));
-            }
         }
     }
 
@@ -269,20 +293,8 @@ public class ProjectorFragment extends SettingsPreferenceFragment
                 + "   y " + readCornerValue(corner, "y");
     }
 
-    private void bindSwitch(PreferenceScreen screen, String key) {
-        final SwitchPreference preference = screen.findPreference(key);
-        if (preference != null) {
-            preference.setOnPreferenceChangeListener(this);
-        }
-    }
-
-    private static boolean isTrue(String property) {
-        return SystemProperties.getBoolean(property, false);
-    }
-
-    private void sendKeystoneMeasure() {
-        final Intent intent = new Intent(ACTION_KEYSTONE_MEASURE);
-        intent.putExtra("ratio", 1);
-        getContext().sendBroadcast(intent);
+    private static int readZoom() {
+        return SystemProperties.getInt(PROP_ZOOM_VALUE,
+                SystemProperties.getInt(PROP_ZOOM_SCALE, 0));
     }
 }

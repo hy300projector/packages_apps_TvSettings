@@ -17,7 +17,6 @@
 package com.android.tv.settings.projector;
 
 import android.os.Bundle;
-import android.os.SystemProperties;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -92,22 +91,8 @@ public class ProjectorCornerDialog extends DialogFragment {
 
     private void updateValue() {
         final int corner = getArguments() == null ? 0 : getArguments().getInt(ARG_CORNER, 0);
-        final String sysPrefix = ProjectorFragment.SYS_PREFIX + suffix(corner);
-        mValue.setText("x " + SystemProperties.getInt(sysPrefix + "x", 0)
-                + "   y " + SystemProperties.getInt(sysPrefix + "y", 0));
-    }
-
-    private static String suffix(int corner) {
-        switch (corner) {
-            case 0:
-                return "lt";
-            case 1:
-                return "rt";
-            case 2:
-                return "lb";
-            default:
-                return "rb";
-        }
+        mValue.setText("x " + ProjectorFragment.readCornerValue(corner, "x")
+                + "   y " + ProjectorFragment.readCornerValue(corner, "y"));
     }
 
     private static String cornerTitle(int corner) {

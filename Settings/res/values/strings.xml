@@ -2851,4 +2851,20 @@
     <string name="projector_keystone_bottom_right">Bottom right corner</string>
     <string name="projector_keystone_reset">Reset keystone</string>
     <string name="projector_keystone_reset_summary">Returns all four corners to their uncorrected positions</string>
+    <string name="projector_auto_fit">Automatic screen fit</string>
+    <string name="projector_auto_fit_summary">Recognises the screen outline and squares the picture to it</string>
+    <string name="projector_obstacle">Obstacle avoidance</string>
+    <string name="projector_obstacle_summary">Shrinks the picture when something blocks the beam</string>
+    <string name="projector_picture_title">Picture size</string>
+    <string name="projector_zoom">Digital zoom</string>
+    <string name="projector_zoom_summary">Current zoom level</string>
+    <string name="projector_zoom_in">Zoom in</string>
+    <string name="projector_zoom_out">Zoom out</string>
+    <string name="projector_touch_title">Touch</string>
+    <string name="projector_touch_keys">On-screen touch keys</string>
+    <string name="projector_touch_keys_summary">Keeps the touch keys aligned when the picture is corrected</string>
+    <string name="projector_focus_near">Focus nearer</string>
+    <string name="projector_focus_near_summary">Move the lens a few steps towards the screen</string>
+    <string name="projector_focus_far">Focus further</string>
+    <string name="projector_focus_far_summary">Move the lens a few steps away from the screen</string>
 </resources>
